@@ -30,16 +30,16 @@ That's the whole loop. Everything else is convenience on top of those five steps
 **Requirements:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code), Python 3.10+, `git`. Zero pip installs required.
 
 ```bash
-git clone --depth 1 https://github.com/<your-github-user>/multi-agent-connector.git \
+git clone --depth 1 https://github.com/sparkdeath324/multi-agent-connector.git \
   ~/.claude/plugins/multi-agent-connector && \
   ~/.claude/plugins/multi-agent-connector/setup
 ```
 
-> Replace `<your-github-user>` with the actual GitHub owner of this repo (whoever published it). Or, even faster:
->
-> ```bash
-> curl -fsSL https://raw.githubusercontent.com/<your-github-user>/multi-agent-connector/main/install.sh | bash
-> ```
+Or, even faster, the curl|bash bootstrap:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sparkdeath324/multi-agent-connector/main/install.sh | bash
+```
 
 That single command:
 

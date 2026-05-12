@@ -3,7 +3,7 @@
 # multi-agent-connector — one-line installer.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/<your-github-user>/multi-agent-connector/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/sparkdeath324/multi-agent-connector/main/install.sh | bash
 #
 # Or with a custom repo / install location:
 #   MAC_CONNECTOR_REPO=https://github.com/me/fork.git bash install.sh
@@ -17,7 +17,7 @@
 
 set -euo pipefail
 
-REPO_URL="${MAC_CONNECTOR_REPO:-https://github.com/<your-github-user>/multi-agent-connector.git}"
+REPO_URL="${MAC_CONNECTOR_REPO:-https://github.com/sparkdeath324/multi-agent-connector.git}"
 INSTALL_DIR="${MAC_CONNECTOR_INSTALL_DIR:-$HOME/.claude/plugins/multi-agent-connector}"
 BRANCH="${MAC_CONNECTOR_BRANCH:-main}"
 
@@ -30,13 +30,6 @@ require() {
 
 require git
 require python3
-
-if [[ "$REPO_URL" == *"<your-github-user>"* ]]; then
-  echo "[err] install.sh still has the placeholder repo URL." >&2
-  echo "      Set MAC_CONNECTOR_REPO=<real-url> and re-run, e.g.:" >&2
-  echo "        MAC_CONNECTOR_REPO=https://github.com/me/multi-agent-connector.git bash install.sh" >&2
-  exit 2
-fi
 
 mkdir -p "$(dirname "$INSTALL_DIR")"
 
