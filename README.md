@@ -25,58 +25,47 @@ No cloud. No daemon you have to remember to start. No auth, no encryption, no cr
 
 That's the whole loop. Everything else is convenience on top of those five steps.
 
-## Install — one paste
+## Install
 
-**Requirements:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code), Python 3.10+, `git`. Zero pip installs required.
+**Requirements:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code), Python 3.10+. Zero pip installs required.
 
-```bash
-git clone --depth 1 https://github.com/sparkdeath324/multi-agent-connector.git \
-  ~/.claude/plugins/multi-agent-connector && \
-  ~/.claude/plugins/multi-agent-connector/setup
+This repo is a Claude Code **plugin marketplace** — install with the built-in `/plugin` command:
+
+```
+/plugin marketplace add sparkdeath324/multi-agent-connector
+/plugin install multi-agent-connector@multi-agent-connector
 ```
 
-Or, even faster, the curl|bash bootstrap:
+That's it. Claude Code:
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/sparkdeath324/multi-agent-connector/main/install.sh | bash
+1. Clones the marketplace into its plugin cache
+2. Registers the slash commands (`/connect`, `/peers`, `/feed`, `/handoff`, `/pull`)
+3. Wires the hooks (auto-publish on plan/memory/screenshot writes)
+4. Auto-loads the bundled MCP server from `.mcp.json`
+
+No edits to `~/.claude/settings.json`, no shell scripts, nothing to chmod.
+
+**Local / dev install** — if you've cloned this repo and want to install from your working copy without going through GitHub:
+
+```
+/plugin marketplace add /absolute/path/to/multi-agent-connector
+/plugin install multi-agent-connector@multi-agent-connector
 ```
 
-That single command:
+**Updating:**
 
-1. Clones the plugin directly into `~/.claude/plugins/multi-agent-connector/` — where Claude Code auto-discovers it.
-2. Runs the plugin's `setup` script, which:
-   - Marks `bin/connector-publish` and `setup` executable.
-   - Idempotently inserts an `mcpServers.multi-agent-connector` entry into `~/.claude/settings.json` — preserves every other key, atomic write.
-   - Runs a publish + subscribe smoke test against a throwaway DB to prove the install actually works. The install fails loudly if the smoke test fails.
-
-Restart Claude Code afterwards so it picks up the new plugin and MCP server.
-
-**Updating to a newer version:**
-
-```bash
-cd ~/.claude/plugins/multi-agent-connector && git pull && ./setup
 ```
-
-`setup` is idempotent — safe to re-run any time. It detects that the plugin is already in place, only re-wires settings if the entry has drifted, and re-runs the smoke test.
+/plugin marketplace update multi-agent-connector
+```
 
 **Uninstalling:**
 
-```bash
-~/.claude/plugins/multi-agent-connector/setup --uninstall && \
-  rm -rf ~/.claude/plugins/multi-agent-connector ~/.claude/multi-agent-connector
+```
+/plugin uninstall multi-agent-connector
+/plugin marketplace remove multi-agent-connector
 ```
 
-The first command removes the `mcpServers.multi-agent-connector` entry from settings.json. The second deletes the plugin and its runtime state directory.
-
-**Setup options:**
-
-| Flag | What it does |
-|------|--------------|
-| (none) | Wire `~/.claude/settings.json`, mark scripts executable, run smoke test. Copies the plugin to `~/.claude/plugins/multi-agent-connector/` if it isn't already there. |
-| `--dry-run` | Print every change without writing a thing. Run this first if you want to see exactly what `setup` will do. |
-| `--uninstall` | Remove the `mcpServers.multi-agent-connector` entry from settings.json. Leaves plugin files alone — `rm -rf` them yourself for a clean wipe. |
-| `--here` | Skip the copy. Wire settings.json to point at the plugin's current location. Useful for development. |
-| `--install-dir PATH` | Override the install destination. |
+Plugin runtime state lives at `~/.claude/multi-agent-connector/` (SQLite + blobs). `rm -rf` that directory for a full wipe.
 
 ### Confirm it's live
 
@@ -180,14 +169,14 @@ The publisher CLI checks this before every write and exits cleanly when present.
 
 ```
 multi-agent-connector/
-├── install.sh                     # curl|bash bootstrap (clones repo + runs setup)
-├── setup                          # one-shot installer (Python, stdlib only)
-├── .claude-plugin/plugin.json     # plugin manifest
+├── .claude-plugin/
+│   ├── plugin.json                # plugin manifest
+│   └── marketplace.json           # marketplace declaration (repo == single-plugin marketplace)
+├── .mcp.json                      # MCP server registration (auto-loaded on /plugin install)
 ├── connector/
 │   ├── server.py                  # MCP stdio server (FastMCP w/ JSON-RPC fallback)
 │   ├── db.py                      # SQLite schema + helpers (WAL mode)
-│   ├── blobs.py                   # Content-addressed artifact storage (flock-guarded)
-│   └── config.example.json        # template for your mcpServers settings
+│   └── blobs.py                   # Content-addressed artifact storage (flock-guarded)
 ├── bin/connector-publish          # Fast stdlib-only CLI invoked by hooks
 ├── hooks/
 │   ├── hooks.json                 # SessionStart / PostToolUse / Stop registration

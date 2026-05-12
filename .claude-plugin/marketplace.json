@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "multi-agent-connector",
+  "version": "0.1.0",
+  "description": "Peer-to-peer rendezvous for same-machine Claude Code sessions.",
+  "owner": {
+    "name": "sparkdeath324",
+    "url": "https://github.com/sparkdeath324"
+  },
+  "plugins": [
+    {
+      "name": "multi-agent-connector",
+      "description": "Open two Claude Code terminals, /connect demo, and they auto-share plans, screenshots, transcripts, and memory notes through a local SQLite event log. No cloud, no auth.",
+      "version": "0.1.0",
+      "source": ".",
+      "category": "productivity",
+      "keywords": ["multi-agent", "coordination", "sessions", "peer", "rendezvous", "mcp", "hooks"]
+    }
+  ]
+}
