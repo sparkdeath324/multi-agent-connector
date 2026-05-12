@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "multi-agent-connector": {
+      "command": "python3",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/connector/server.py"
+      ],
+      "env": {}
+    }
+  }
+}

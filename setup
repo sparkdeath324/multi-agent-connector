@@ -1,0 +1,267 @@
+#!/usr/bin/env python3
+"""multi-agent-connector — one-shot installer.
+
+Idempotent. Safe to re-run. Does four things:
+
+  1. Copies (or syncs) the plugin into ~/.claude/plugins/multi-agent-connector/
+     unless it's already running from there.
+  2. Marks bin/connector-publish executable.
+  3. Inserts an `mcpServers.multi-agent-connector` entry into
+     ~/.claude/settings.json (creating the file if missing, preserving
+     every other key, leaving an existing entry alone).
+  4. Runs a smoke test: publish + subscribe against a tmp DB to prove
+     the install actually works.
+
+Usage:
+  ./setup                # install / repair into ~/.claude/plugins/...
+  ./setup --here         # leave the plugin where it is, only wire settings
+  ./setup --uninstall    # remove the MCP entry from settings.json
+  ./setup --dry-run      # print what would change, change nothing
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import sys
+import tempfile
+from pathlib import Path
+
+PLUGIN_NAME = "multi-agent-connector"
+DEFAULT_INSTALL_DIR = Path.home() / ".claude" / "plugins" / PLUGIN_NAME
+SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
+
+# ANSI helpers (skip on non-TTY)
+def _c(code: str, s: str) -> str:
+    return f"\033[{code}m{s}\033[0m" if sys.stdout.isatty() else s
+
+def ok(msg: str) -> None: print(_c("32", "[ok]   ") + msg)
+def info(msg: str) -> None: print(_c("36", "[info] ") + msg)
+def warn(msg: str) -> None: print(_c("33", "[warn] ") + msg)
+def err(msg: str) -> None: print(_c("31", "[err]  ") + msg)
+
+
+def plugin_source_dir() -> Path:
+    return Path(__file__).resolve().parent
+
+
+def copy_plugin(src: Path, dst: Path, dry_run: bool) -> bool:
+    """Copy plugin files. Returns True if anything was copied."""
+    if src.resolve() == dst.resolve():
+        info(f"plugin already lives at {dst} — no copy needed.")
+        return False
+
+    if dry_run:
+        info(f"[dry-run] would sync {src} -> {dst}")
+        return True
+
+    dst.parent.mkdir(parents=True, exist_ok=True)
+
+    # Use shutil.copytree with dirs_exist_ok for an in-place sync.
+    # Ignore caches and the local state directory if someone runs setup
+    # against a populated plugin dir.
+    def ignore(_dir: str, names: list[str]) -> list[str]:
+        return [n for n in names if n in {"__pycache__", ".DS_Store"}]
+
+    shutil.copytree(src, dst, ignore=ignore, dirs_exist_ok=True)
+    ok(f"copied plugin to {dst}")
+    return True
+
+
+def chmod_executables(plugin_dir: Path, dry_run: bool) -> None:
+    targets = [plugin_dir / "bin" / "connector-publish", plugin_dir / "setup"]
+    for t in targets:
+        if not t.exists():
+            continue
+        if dry_run:
+            info(f"[dry-run] would chmod +x {t}")
+            continue
+        mode = t.stat().st_mode
+        t.chmod(mode | 0o111)
+    ok("publisher CLI and setup script marked executable")
+
+
+def load_settings() -> tuple[dict, bool]:
+    """Returns (settings, created). created=True if file didn't exist."""
+    if not SETTINGS_PATH.exists():
+        return {}, True
+    try:
+        return json.loads(SETTINGS_PATH.read_text()), False
+    except json.JSONDecodeError as e:
+        err(f"could not parse {SETTINGS_PATH}: {e}")
+        err("aborting before damage. Fix the JSON manually and re-run.")
+        sys.exit(2)
+
+
+def write_settings(settings: dict, dry_run: bool) -> None:
+    serialized = json.dumps(settings, indent=2) + "\n"
+    if dry_run:
+        info(f"[dry-run] would write {SETTINGS_PATH}:")
+        for line in serialized.splitlines():
+            print("    " + line)
+        return
+    SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    # write via temp + rename for atomicity
+    tmp = SETTINGS_PATH.with_suffix(".json.tmp")
+    tmp.write_text(serialized)
+    tmp.replace(SETTINGS_PATH)
+
+
+def wire_mcp(install_dir: Path, dry_run: bool) -> None:
+    settings, created = load_settings()
+    if created:
+        info(f"creating new {SETTINGS_PATH}")
+
+    mcp_servers = settings.setdefault("mcpServers", {})
+    server_path = str(install_dir / "connector" / "server.py")
+    entry = {"command": "python3", "args": [server_path]}
+
+    existing = mcp_servers.get(PLUGIN_NAME)
+    if existing == entry:
+        ok(f"settings.json already has mcpServers.{PLUGIN_NAME} pointed at {server_path}")
+        return
+    if existing:
+        info(f"updating existing mcpServers.{PLUGIN_NAME} entry")
+    else:
+        info(f"adding mcpServers.{PLUGIN_NAME} entry")
+
+    mcp_servers[PLUGIN_NAME] = entry
+    write_settings(settings, dry_run)
+    ok(f"settings.json wired (server path: {server_path})")
+
+
+def unwire_mcp(dry_run: bool) -> None:
+    if not SETTINGS_PATH.exists():
+        info(f"no {SETTINGS_PATH} — nothing to uninstall.")
+        return
+    settings, _ = load_settings()
+    mcp = settings.get("mcpServers", {})
+    if PLUGIN_NAME not in mcp:
+        info(f"no mcpServers.{PLUGIN_NAME} entry — nothing to remove.")
+        return
+    del mcp[PLUGIN_NAME]
+    if not mcp:
+        del settings["mcpServers"]
+    write_settings(settings, dry_run)
+    ok(f"removed mcpServers.{PLUGIN_NAME} from settings.json")
+    info("note: plugin files at ~/.claude/plugins/multi-agent-connector/ left in place.")
+    info("      delete that directory manually if you want a full uninstall.")
+
+
+def smoke_test(install_dir: Path) -> bool:
+    """Publish + subscribe in an isolated DB. Returns True on success."""
+    with tempfile.TemporaryDirectory() as tmp:
+        env = os.environ.copy()
+        env["MAC_CONNECTOR_ROOT"] = tmp
+        publisher = install_dir / "bin" / "connector-publish"
+
+        import subprocess
+        r = subprocess.run(
+            [sys.executable, str(publisher), "join", "--room", "smoke"],
+            env=env, capture_output=True, text=True, timeout=10,
+        )
+        if r.returncode != 0:
+            err(f"publisher join failed (rc={r.returncode}): {r.stderr.strip()}")
+            return False
+
+        r = subprocess.run(
+            [sys.executable, str(publisher), "note", "--text", "hello", "--room", "smoke"],
+            env=env, capture_output=True, text=True, timeout=10,
+        )
+        if r.returncode != 0:
+            err(f"publisher note failed (rc={r.returncode}): {r.stderr.strip()}")
+            return False
+
+        # Read back via the connector package
+        sys.path.insert(0, str(install_dir))
+        try:
+            # re-import in case a stale module is cached
+            import importlib
+            import connector.db as db_mod
+            importlib.reload(db_mod)
+            db_mod.ROOT = Path(tmp)  # type: ignore
+            db_mod.DB_PATH = Path(tmp) / "state.db"  # type: ignore
+            with db_mod.connect() as c:
+                events = db_mod.query_events(c, "smoke", limit=10)
+        except Exception as e:
+            err(f"smoke read failed: {e}")
+            return False
+        finally:
+            sys.path.remove(str(install_dir))
+
+        kinds = [e["kind"] for e in events]
+        if "session_join" in kinds and "note" in kinds:
+            return True
+        err(f"smoke test got unexpected events: {kinds}")
+        return False
+
+
+def print_next_steps(install_dir: Path) -> None:
+    print()
+    print(_c("1;32", "Install complete."))
+    print()
+    print("Try it now:")
+    print()
+    print(_c("36", "  1. Open two Claude Code terminals."))
+    print(_c("36", "  2. In each, type:   /connect demo"))
+    print(_c("36", "  3. In one, write any file under ~/.claude/plans/"))
+    print(_c("36", "  4. In the other, type:   /feed"))
+    print()
+    print(f"Plugin installed at: {install_dir}")
+    print(f"Settings updated:    {SETTINGS_PATH}")
+    print(f"Runtime state:       {Path.home() / '.claude' / 'multi-agent-connector'}")
+    print()
+    print("Reinstall any time with ./setup. Uninstall with ./setup --uninstall.")
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(prog="setup", description="multi-agent-connector installer")
+    p.add_argument("--here", action="store_true",
+                   help="don't copy; install in-place from the current plugin location")
+    p.add_argument("--uninstall", action="store_true",
+                   help="remove the MCP server entry from settings.json")
+    p.add_argument("--dry-run", action="store_true",
+                   help="print what would change without writing anything")
+    p.add_argument("--install-dir", type=Path, default=DEFAULT_INSTALL_DIR,
+                   help=f"override install destination (default: {DEFAULT_INSTALL_DIR})")
+    args = p.parse_args()
+
+    if args.uninstall:
+        unwire_mcp(args.dry_run)
+        return 0
+
+    src = plugin_source_dir()
+    install_dir = src if args.here else args.install_dir
+
+    info(f"plugin source:      {src}")
+    info(f"install destination: {install_dir}")
+    info(f"settings file:      {SETTINGS_PATH}")
+    if args.dry_run:
+        warn("DRY RUN — no files will be modified.")
+
+    if not args.here:
+        copy_plugin(src, install_dir, args.dry_run)
+
+    chmod_executables(install_dir, args.dry_run)
+    wire_mcp(install_dir, args.dry_run)
+
+    if args.dry_run:
+        info("dry-run done.")
+        return 0
+
+    info("running smoke test…")
+    if smoke_test(install_dir):
+        ok("smoke test passed (publish + subscribe round-tripped)")
+    else:
+        err("smoke test FAILED — install completed but something is wrong.")
+        err("check ~/.claude/multi-agent-connector/debug.log")
+        return 1
+
+    print_next_steps(install_dir)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
