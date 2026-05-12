@@ -12,7 +12,7 @@
       "name": "multi-agent-connector",
       "description": "Open two Claude Code terminals, /connect demo, and they auto-share plans, screenshots, transcripts, and memory notes through a local SQLite event log. No cloud, no auth.",
       "version": "0.1.0",
-      "source": ".",
+      "source": "./plugin",
       "category": "productivity",
       "keywords": ["multi-agent", "coordination", "sessions", "peer", "rendezvous", "mcp", "hooks"]
     }
