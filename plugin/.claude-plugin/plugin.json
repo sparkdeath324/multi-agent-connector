@@ -1,6 +1,6 @@
 {
   "name": "multi-agent-connector",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Peer-to-peer rendezvous for same-machine Claude Code sessions: share plans, memory, transcripts, and artifacts across terminals.",
   "author": {
     "name": "Preet S",

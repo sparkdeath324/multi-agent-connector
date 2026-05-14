@@ -30,15 +30,16 @@ def log_error(prefix: str, exc: BaseException) -> None:
         pass
 
 
-def current_room() -> str:
+def current_room() -> str | None:
     try:
         from connector import db
         f = db.ROOT / "current_room"
         if f.exists():
-            return f.read_text().strip() or "default"
+            value = f.read_text().strip()
+            return value or None
     except Exception:
         pass
-    return "default"
+    return None
 
 
 def run_publisher(*args: str) -> None:

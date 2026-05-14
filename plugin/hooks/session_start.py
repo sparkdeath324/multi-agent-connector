@@ -18,6 +18,10 @@ def main() -> int:
             pass
 
         room = current_room()
+        if room is None:
+            print(json.dumps({"systemMessage": "multi-agent-connector: not connected to any room. Use `/connect <room>` to join."}))
+            return 0
+
         run_publisher("join", "--room", room)
 
         # Surface peer info to Claude via stdout (visible as systemMessage).

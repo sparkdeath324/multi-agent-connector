@@ -35,13 +35,17 @@ def main() -> int:
             f.seek(offset)
             tail = f.read().decode("utf-8", errors="replace")
 
+        room = current_room()
+        if room is None:
+            return 0
+
         # Write tail to a tmp file and pass via --content-file (the
         # publisher CLI is set up for files, not stdin payloads).
         from connector import db  # noqa
         db.ensure_root()
         tmp = db.ROOT / "_transcript_tail.txt"
         tmp.write_text(tail)
-        run_publisher("transcript", "--content-file", str(tmp), "--room", current_room())
+        run_publisher("transcript", "--content-file", str(tmp), "--room", room)
         return 0
     except Exception as exc:
         log_error("stop", exc)

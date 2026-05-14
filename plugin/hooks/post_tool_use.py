@@ -59,6 +59,8 @@ def main() -> int:
             return 0
 
         room = current_room()
+        if room is None:
+            return 0
 
         if kind == "plan":
             run_publisher("plan", "--path", str(path.resolve()), "--room", room)
