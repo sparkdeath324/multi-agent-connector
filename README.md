@@ -6,7 +6,7 @@ When I'm working with Claude Code, I almost always have two or three sessions op
 
 **multi-agent-connector is the fix.** It is a Claude Code plugin that gives same-machine sessions a shared, append-only event log keyed by **room name**. Two terminals join `/connect demo`. From that moment, every plan one of them writes, every memory note, every screenshot, every transcript checkpoint at the end of a turn — auto-publishes into the room. The other terminal runs `/feed` and sees it. Runs `/pull <id>` and the artifact lands in its working directory.
 
-No cloud. No daemon you have to remember to start. No auth, no encryption, no cross-host sync. One SQLite file in `~/.claude/multi-agent-connector/`, a publisher CLI, three hooks, five slash commands, one subagent. ~700 lines of stdlib-only Python.
+No cloud. No daemon you have to remember to start. No auth, no encryption, no cross-host sync. One SQLite file in `~/.claude/multi-agent-connector/`, a publisher CLI, three hooks, six slash commands, one subagent. ~700 lines of stdlib-only Python.
 
 **Who this is for:**
 
@@ -39,7 +39,7 @@ This repo is a Claude Code **plugin marketplace** — install with the built-in 
 That's it. Claude Code:
 
 1. Clones the marketplace into its plugin cache
-2. Registers the slash commands (`/connect`, `/peers`, `/feed`, `/handoff`, `/pull`)
+2. Registers the slash commands (`/connect`, `/disconnect`, `/peers`, `/feed`, `/handoff`, `/pull`)
 3. Wires the hooks (auto-publish on plan/memory/screenshot writes)
 4. Auto-loads the bundled MCP server from `.mcp.json`
 
@@ -124,6 +124,7 @@ Each slash command is a small role in a peer-handoff workflow:
 | Command | Role | What it does |
 |---------|------|--------------|
 | `/connect <room>` | **Join** | Joins (creates if missing) a named room. Sets it as this session's current room. Every subsequent auto-publish flows into it. |
+| `/disconnect` | **Leave** | Marks this session as left in the current room, publishes a `session_leave` event, and clears the cached current-room pointer so subsequent hooks fall back to `default`. |
 | `/peers` | **See who's around** | Lists every active peer session in the current room — pid, cwd, last-seen time. |
 | `/feed [--since 10m] [--kinds plan,memory,artifact]` | **Read the room** | Shows recent events from peers (and you). Plans show a path + snippet, artifacts show a name + size, notes show their text. |
 | `/handoff "note"` | **Pass the baton** | Publishes the latest plan from `~/.claude/plans/` plus a free-form handoff note. The receiving session sees both in `/feed`. |
@@ -184,7 +185,7 @@ multi-agent-connector/
 │   ├── session_start.py
 │   ├── post_tool_use.py
 │   └── stop.py
-├── commands/                      # /connect /peers /feed /handoff /pull
+├── commands/                      # /connect /disconnect /peers /feed /handoff /pull
 └── agents/connector-courier.md    # digest subagent (Haiku)
 ```
 
